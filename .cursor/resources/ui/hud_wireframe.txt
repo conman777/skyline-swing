@@ -1,0 +1,8 @@
+Skyline Swing HUD Wireframe
+---------------------------
+
+Top-left: Distance label above multiplier badge (pixel font, left aligned).
+Top-right: Pause button aligned right, run seed label above (small text).
+Center-top: Hazard toast (appears briefly). Hidden by default.
+Bottom-left: Pickup badge (icon placeholder, name text) with duration bar.
+Bottom-right: Speed readout above speed fill bar (indicates speed ratio).
