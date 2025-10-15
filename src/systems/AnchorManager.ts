@@ -51,10 +51,7 @@ export class AnchorManager {
       this.drawDebugAnchors();
     }
 
-    return {
-      surfacePoints: this.surfaces,
-      beaconZones: this.beaconZones,
-    };
+    return this.snapshotAnchors();
   }
 
   clear(): void {
@@ -85,6 +82,8 @@ export class AnchorManager {
     if (this.debug) {
       this.drawDebugAnchors();
     }
+
+    return this.snapshotAnchors();
   }
 
   private drawDebugAnchors(): void {
@@ -100,5 +99,12 @@ export class AnchorManager {
       this.surfaceGraphics?.lineStyle(2, 0xff86ff, 0.8);
       this.surfaceGraphics?.strokeCircle(beacon.x, beacon.y, 8);
     });
+  }
+
+  private snapshotAnchors(): AnchorsResult {
+    return {
+      surfacePoints: this.surfaces,
+      beaconZones: [...this.beaconZones],
+    };
   }
 }

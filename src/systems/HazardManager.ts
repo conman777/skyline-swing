@@ -8,9 +8,15 @@ interface HazardManagerConfig {
 export class HazardManager {
   private readonly scene: Phaser.Scene;
   private readonly hazards: Phaser.GameObjects.GameObject[] = [];
+  private readonly group: Phaser.Physics.Arcade.Group;
 
   constructor(config: HazardManagerConfig) {
     this.scene = config.scene;
+    this.group = this.scene.physics.add.group({ allowGravity: false, immovable: true });
+  }
+
+  get activeHazards(): Phaser.Physics.Arcade.Group {
+    return this.group;
   }
 
   spawnHazards(hazards: HazardDefinition[], offsetX: number): void {
@@ -41,6 +47,7 @@ export class HazardManager {
   clear(): void {
     this.hazards.forEach((obj) => obj.destroy());
     this.hazards.length = 0;
+    this.group.clear(true, true);
   }
 
   private createSpikes(def: HazardDefinition, offsetX: number): void {
@@ -48,8 +55,13 @@ export class HazardManager {
     const height = def.height ?? 24;
     const rect = this.scene.add.rectangle(offsetX + def.x + width / 2, def.y, width, height, 0xff5c5c, 1);
     rect.setOrigin(0.5, 1);
-    this.scene.physics.add.existing(rect, true);
+    this.scene.physics.add.existing(rect);
+    const body = rect.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(false);
+    body.setImmovable(true);
+    body.setVelocity(0, 0);
     rect.setData('hazard', 'spikes');
+    this.group.add(rect);
     this.hazards.push(rect);
   }
 
@@ -58,11 +70,13 @@ export class HazardManager {
     const height = def.height ?? 180;
     const rect = this.scene.add.rectangle(offsetX + def.x + width / 2, def.y, width, height, 0x5cc8ff, 0.25);
     rect.setOrigin(0.5, 1);
-    this.scene.physics.add.existing(rect, false);
+    this.scene.physics.add.existing(rect);
     const body = rect.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(false);
     body.setImmovable(true);
     body.setVelocity(0, -80);
+    rect.setData('hazard', 'wind');
+    this.group.add(rect);
     this.hazards.push(rect);
   }
 
@@ -71,6 +85,13 @@ export class HazardManager {
     const height = def.height ?? 40;
     const rect = this.scene.add.rectangle(offsetX + def.x + width / 2, def.y, width, height, 0xffa64c, 0.5);
     rect.setOrigin(0.5, 1);
+    rect.setData('hazard', def.type ?? 'hazard');
+    this.scene.physics.add.existing(rect);
+    const body = rect.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(false);
+    body.setImmovable(true);
+    body.setVelocity(0, 0);
+    this.group.add(rect);
     this.hazards.push(rect);
   }
 }

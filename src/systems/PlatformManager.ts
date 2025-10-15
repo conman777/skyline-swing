@@ -22,7 +22,6 @@ export class PlatformManager {
       const color = platform.type === 'crumble' ? 0xf9a66c : 0x526072;
       const rect = this.scene.add.rectangle(x, y, platform.width, platform.height, color, 1);
       rect.setOrigin(0.5, 1);
-      this.scene.physics.add.existing(rect, true);
       this.group.add(rect);
       this.rects.push(rect);
     });

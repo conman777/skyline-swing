@@ -51,6 +51,7 @@ export class GameScene extends Phaser.Scene {
   private scrollSpeed = CAMERA_SCROLL_SPEED_START;
   private guideColor = WEB_COLORS.none;
   private reelInput = 0;
+  private reelInputResetTimer?: Phaser.Time.TimerEvent;
   private currentCursorState: keyof typeof CURSOR_TEXTURES = 'idle';
   private friendlyAnchors: Phaser.Math.Vector2[] = [];
 
@@ -58,11 +59,14 @@ export class GameScene extends Phaser.Scene {
   private elapsedTime = 0;
   private styleMultiplier = 1;
   private seenHazards = new Set<string>();
+  private lastTetheredState = false;
+  private runEnded = false;
 
   private segmentGenerator!: SegmentGenerator;
   private anchorManager!: AnchorManager;
   private platformManager!: PlatformManager;
   private hazardManager!: HazardManager;
+  private hazardOverlap?: Phaser.Physics.Arcade.Collider;
   private activeSegments: GeneratedSegment[] = [];
 
   constructor() {
@@ -106,6 +110,14 @@ export class GameScene extends Phaser.Scene {
     this.createWeb();
     this.createWorldManagers();
     this.hud = new HUDOverlay({ scene: this });
+    this.physics.add.collider(this.player.sprite, this.platformManager.collider);
+    this.hazardOverlap = this.physics.add.overlap(
+      this.player.sprite,
+      this.hazardManager.activeHazards,
+      this.handleHazardHit,
+      undefined,
+      this,
+    );
     this.spawnInitialSegments();
     this.hud.setSeed(this.segmentGenerator.seed);
     this.cameras.main.startFollow(
@@ -128,6 +140,7 @@ export class GameScene extends Phaser.Scene {
     this.updateDistance(delta);
     this.updateWebAim();
     this.web.setReelInput(this.reelInput);
+    this.syncPlayerWebState();
     this.updateSegments();
   }
 
@@ -174,8 +187,10 @@ export class GameScene extends Phaser.Scene {
 
     this.input.on('wheel', (_pointer, _over, _dx, dy) => {
       this.reelInput = dy < 0 ? -1 : dy > 0 ? 1 : 0;
-      this.time.delayedCall(140, () => {
+      this.reelInputResetTimer?.remove(false);
+      this.reelInputResetTimer = this.time.delayedCall(140, () => {
         this.reelInput = 0;
+        this.reelInputResetTimer = undefined;
       });
     });
   }
@@ -294,7 +309,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getAimDirection(origin: Phaser.Math.Vector2): Phaser.Math.Vector2 | null {
-    const pointerWorld = this.cursorPointer.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
+    const camera = this.cameras?.main;
+    if (!camera) {
+      return null;
+    }
+    const pointerWorld = this.cursorPointer.positionToCamera(camera) as Phaser.Math.Vector2;
     const direction = pointerWorld.clone().subtract(origin);
     if (direction.lengthSq() < 0.0001) {
       return null;
@@ -314,7 +333,7 @@ export class GameScene extends Phaser.Scene {
     const deltaDistance = this.scrollSpeed * (delta / 1000);
     this.cameras.main.scrollX += deltaDistance;
     if (this.player.sprite.x < this.cameras.main.worldView.left + 32) {
-      this.handlePlayerKO();
+      this.handlePlayerKO('Left boundary');
     }
   }
 
@@ -338,7 +357,9 @@ export class GameScene extends Phaser.Scene {
     const leftBound = this.cameras.main.worldView.left;
     this.platformManager.prune(leftBound);
     this.hazardManager.prune(leftBound);
-    this.anchorManager.prune(leftBound);
+    const prunedAnchors = this.anchorManager.prune(leftBound);
+    this.anchorScanner.updateSurfaceAnchors(prunedAnchors.surfacePoints);
+    this.anchorScanner.updateBeaconZones(prunedAnchors.beaconZones);
 
     const rightEdge = this.cameras.main.worldView.right;
     const upcomingThreshold = this.segmentGenerator.length - rightEdge;
@@ -350,7 +371,9 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private handlePlayerKO(): void {
+  private handlePlayerKO(reason = 'Left boundary'): void {
+    if (this.runEnded) return;
+    this.runEnded = true;
     this.scene.launch('ResultsScene', {
       distance: this.distanceTravelled,
       duration: this.elapsedTime,
@@ -360,7 +383,7 @@ export class GameScene extends Phaser.Scene {
       hazardsCleared: this.seenHazards.size,
       pickupsUsed: 0,
       runSeed: this.segmentGenerator.seed,
-      reason: 'Left boundary',
+      reason,
     });
     this.scene.stop();
   }
@@ -379,5 +402,21 @@ export class GameScene extends Phaser.Scene {
       ? `url('assets/ui/${cursorKey}.png') 8 8, pointer`
       : 'crosshair';
     this.input.setDefaultCursor(texture);
+  }
+
+  private handleHazardHit(
+    _player: Phaser.GameObjects.GameObject,
+    hazard: Phaser.GameObjects.GameObject,
+  ): void {
+    const hazardType = (hazard.getData?.('hazard') as string) ?? 'hazard';
+    this.handlePlayerKO(`Hazard: ${hazardType}`);
+  }
+
+  private syncPlayerWebState(): void {
+    const tethered = this.web.isTethered;
+    if (tethered !== this.lastTetheredState) {
+      this.player.toggleAirControl(tethered);
+      this.lastTetheredState = tethered;
+    }
   }
 }

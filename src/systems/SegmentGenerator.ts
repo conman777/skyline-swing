@@ -74,6 +74,7 @@ export class SegmentGenerator {
 
   reset(): void {
     this.cursorX = 0;
+    this.runSeed = Phaser.Math.RND.integerInRange(0, 999999);
   }
 
   nextSegment(difficulty: number): GeneratedSegment {

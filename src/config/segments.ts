@@ -12,7 +12,7 @@ export const segmentPool: SegmentDefinition[] = [
       { x: 520, y: 240 },
     ],
     platforms: [
-      { x: 0, y: 320, width: 640, height: 32, type: 'ground' },
+      { x: 0, y: 710, width: 640, height: 32, type: 'ground' },
     ],
     hazards: [],
   },
@@ -27,8 +27,8 @@ export const segmentPool: SegmentDefinition[] = [
       { x: 600, y: 210 },
     ],
     platforms: [
-      { x: 0, y: 340, width: 380, height: 32 },
-      { x: 420, y: 300, width: 300, height: 32 },
+      { x: 0, y: 710, width: 380, height: 32 },
+      { x: 420, y: 680, width: 300, height: 32 },
     ],
     hazards: [],
   },
@@ -43,10 +43,10 @@ export const segmentPool: SegmentDefinition[] = [
       { x: 620, y: 260 },
     ],
     platforms: [
-      { x: 0, y: 340, width: 720, height: 32 },
+      { x: 0, y: 710, width: 720, height: 32 },
     ],
     hazards: [
-      { type: 'spikes', x: 260, y: 332, width: 120, height: 16 },
+      { type: 'spikes', x: 260, y: 702, width: 120, height: 16 },
     ],
   },
   {
@@ -60,9 +60,9 @@ export const segmentPool: SegmentDefinition[] = [
       { x: 670, y: 200 },
     ],
     platforms: [
-      { x: 0, y: 320, width: 240, height: 32 },
-      { x: 300, y: 310, width: 120, height: 24, type: 'crumble' },
-      { x: 460, y: 330, width: 300, height: 32 },
+      { x: 0, y: 710, width: 240, height: 32 },
+      { x: 300, y: 680, width: 120, height: 24, type: 'crumble' },
+      { x: 460, y: 710, width: 300, height: 32 },
     ],
     hazards: [],
   },
@@ -78,10 +78,10 @@ export const segmentPool: SegmentDefinition[] = [
       { x: 760, y: 200 },
     ],
     platforms: [
-      { x: 0, y: 340, width: 820, height: 32 },
+      { x: 0, y: 710, width: 820, height: 32 },
     ],
     hazards: [
-      { type: 'saw', x: 360, y: 320, width: 64, height: 64, data: { path: { x: 360, y: 260, length: 120 } } },
+      { type: 'saw', x: 360, y: 690, width: 64, height: 64, data: { path: { x: 360, y: 630, length: 120 } } },
     ],
   },
   {
@@ -96,10 +96,10 @@ export const segmentPool: SegmentDefinition[] = [
       { x: 800, y: 240 },
     ],
     platforms: [
-      { x: 0, y: 340, width: 860, height: 32 },
+      { x: 0, y: 710, width: 860, height: 32 },
     ],
     hazards: [
-      { type: 'laser', x: 420, y: 280, width: 220, height: 16, data: { cycle: 2200, active: 1200 } },
+      { type: 'laser', x: 420, y: 650, width: 220, height: 16, data: { cycle: 2200, active: 1200 } },
     ],
   },
   {
@@ -114,13 +114,13 @@ export const segmentPool: SegmentDefinition[] = [
       { x: 840, y: 200 },
     ],
     platforms: [
-      { x: 0, y: 330, width: 300, height: 32 },
-      { x: 340, y: 280, width: 120, height: 24, type: 'crumble' },
-      { x: 520, y: 320, width: 380, height: 32 },
+      { x: 0, y: 710, width: 300, height: 32 },
+      { x: 340, y: 660, width: 120, height: 24, type: 'crumble' },
+      { x: 520, y: 710, width: 380, height: 32 },
     ],
     hazards: [
-      { type: 'spikes', x: 520, y: 312, width: 80, height: 16 },
-      { type: 'wind', x: 430, y: 240, width: 120, height: 160, data: { direction: 'up', strength: 0.6 } },
+      { type: 'spikes', x: 520, y: 702, width: 80, height: 16 },
+      { type: 'wind', x: 430, y: 610, width: 120, height: 160, data: { direction: 'up', strength: 0.6 } },
     ],
   },
 ];
