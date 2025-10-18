@@ -30,6 +30,8 @@ export class Player {
   private airControlModifier = 1;
   private coyoteTimeMs: number;
   private jumpBufferMs: number;
+  private extraJumpAllowed = false;
+  private extraJumpAvailable = false;
 
   constructor(config: PlayerConfig) {
     const { scene, x, y } = config;
@@ -87,6 +89,9 @@ export class Player {
         this.lastGroundedAt = this.sprite.scene.time.now;
       }
       this.isGrounded = true;
+      if (this.extraJumpAllowed) {
+        this.extraJumpAvailable = true;
+      }
     } else {
       // Leaving ground: always respect the parameter
       // The collision system is the source of truth
@@ -105,6 +110,11 @@ export class Player {
 
   toggleAirControl(isTethered: boolean): void {
     this.setAirControlModifier(isTethered ? 0.3 : 1);
+  }
+
+  enableDoubleJump(enabled: boolean): void {
+    this.extraJumpAllowed = enabled;
+    this.extraJumpAvailable = enabled;
   }
 
   private handleUpdate(): void {
@@ -140,15 +150,18 @@ export class Player {
       this.lastJumpPressedAt = now;
     }
 
-    const canJump =
-      (this.isGrounded || now - this.lastGroundedAt <= this.coyoteTimeMs) &&
-      now - this.lastJumpPressedAt <= this.jumpBufferMs;
+    const withinBuffer = now - this.lastJumpPressedAt <= this.jumpBufferMs;
+    const grounded = this.isGrounded || now - this.lastGroundedAt <= this.coyoteTimeMs;
+    const canDoubleJump = this.extraJumpAllowed && this.extraJumpAvailable && !grounded;
 
-    if (canJump) {
+    if ((grounded && withinBuffer) || (canDoubleJump && withinBuffer)) {
       body.setVelocityY(PLAYER_JUMP_VELOCITY);
       this.isGrounded = false;
       this.lastJumpPressedAt = 0;
       this.lastGroundedAt = 0;
+      if (canDoubleJump) {
+        this.extraJumpAvailable = false;
+      }
     }
   }
 

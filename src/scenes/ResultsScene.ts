@@ -6,6 +6,10 @@ interface ResultsData {
   topSpeed: number;
   longestChain: number;
   closestNearMiss: number;
+  score: number;
+  nearMisses: number;
+  beaconHits: number;
+  multiplier: number;
   hazardsCleared: number;
   pickupsUsed: number;
   runSeed: string;
@@ -28,8 +32,11 @@ export class ResultsScene extends Phaser.Scene {
       `Distance: ${data.distance.toFixed(1)} m`,
       `Duration: ${data.duration.toFixed(1)} s`,
       `Top Speed: ${data.topSpeed.toFixed(0)} px/s`,
+      `Score: ${data.score.toFixed(0)} (×${data.multiplier.toFixed(2)})`,
       `Longest Swing Chain: ${data.longestChain}`,
       `Closest Near-Miss: ${data.closestNearMiss.toFixed(2)} m`,
+      `Near-Misses Recorded: ${data.nearMisses}`,
+      `Beacon Bonuses: ${data.beaconHits}`,
       `Hazards Cleared: ${data.hazardsCleared}`,
       `Pickups Used: ${data.pickupsUsed}`,
       `Reason: ${data.reason}`,

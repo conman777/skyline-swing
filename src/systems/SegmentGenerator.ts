@@ -33,6 +33,15 @@ export interface HazardDefinition {
   data?: Record<string, unknown>;
 }
 
+export type PickupType = 'longerWeb' | 'slowMo' | 'doubleJump' | 'anchorMagnet';
+
+export interface PickupDefinition {
+  type: PickupType;
+  x: number;
+  y: number;
+  data?: Record<string, unknown>;
+}
+
 export interface SegmentDefinition {
   key: string;
   width: number;
@@ -40,6 +49,7 @@ export interface SegmentDefinition {
   anchors: AnchorDefinition[];
   platforms: PlatformDefinition[];
   hazards: HazardDefinition[];
+  pickups?: PickupDefinition[];
 }
 
 export interface GeneratedSegment {
@@ -78,8 +88,9 @@ export class SegmentGenerator {
   }
 
   nextSegment(difficulty: number): GeneratedSegment {
-    const pool = this.segments.filter((segment) => segment.difficulty <= difficulty);
-    const picked = Phaser.Utils.Array.GetRandom(pool.length > 0 ? pool : this.segments);
+    const pool = this.segments.filter((segment) => segment.difficulty <= difficulty && segment.difficulty >= Math.max(1, difficulty - 2));
+    const candidatePool = pool.length > 0 ? pool : this.segments;
+    const picked = Phaser.Utils.Array.GetRandom(candidatePool);
     const segment: GeneratedSegment = {
       definition: picked,
       worldX: this.cursorX,

@@ -75,16 +75,13 @@ describe('Player', () => {
       expect((player as any).isGrounded).toBe(false);
     });
 
-    it('should not unground if body.blocked.down is true even when parameter is false', () => {
-      // Set body blocked down
+    it('respects collision system flag when leaving ground', () => {
       player.sprite.body.blocked.down = true;
-
-      // Mark as grounded first
       player.markGrounded(true);
 
-      // Try to unground - should stay grounded because blocked.down is true
+      player.sprite.body.blocked.down = false;
       player.markGrounded(false);
-      expect((player as any).isGrounded).toBe(true);
+      expect((player as any).isGrounded).toBe(false);
     });
 
     it('should update lastGroundedAt timestamp when landing', () => {

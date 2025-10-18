@@ -15,6 +15,7 @@ export const segmentPool: SegmentDefinition[] = [
       { x: 0, y: 710, width: 640, height: 32, type: 'ground' },
     ],
     hazards: [],
+    pickups: [{ type: 'longerWeb', x: 320, y: 620 }],
   },
   {
     key: 'safe_intro_02',
@@ -31,6 +32,7 @@ export const segmentPool: SegmentDefinition[] = [
       { x: 420, y: 680, width: 300, height: 32 },
     ],
     hazards: [],
+    pickups: [{ type: 'slowMo', x: 520, y: 640 }],
   },
   {
     key: 'hazard_spikes_01',
@@ -122,5 +124,6 @@ export const segmentPool: SegmentDefinition[] = [
       { type: 'spikes', x: 520, y: 702, width: 80, height: 16 },
       { type: 'wind', x: 430, y: 610, width: 120, height: 160, data: { direction: 'up', strength: 0.6 } },
     ],
+    pickups: [{ type: 'anchorMagnet', x: 140, y: 600 }],
   },
 ];

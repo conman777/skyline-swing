@@ -1,5 +1,7 @@
 import { vi } from 'vitest';
 
+vi.mock('phaser3spectorjs', () => ({}), { virtual: true });
+
 // Mock canvas and WebGL for Phaser
 if (typeof HTMLCanvasElement !== 'undefined') {
   HTMLCanvasElement.prototype.getContext = vi.fn((contextType) => {
