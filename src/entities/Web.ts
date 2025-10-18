@@ -3,6 +3,9 @@ import {
   WEB_MIN_LENGTH,
   WEB_MAX_LENGTH,
   WEB_REEL_SPEED,
+  WEB_PULL_STRENGTH,
+  WEB_DAMPING,
+  WEB_ACCELERATION_CAP,
   WEB_TENSION_BREAK_FORCE,
   WEB_TANGENTIAL_SPEED_LIMIT,
 } from '../config/constants';
@@ -21,6 +24,8 @@ export class Web {
   private readonly tetherLine: Phaser.Geom.Line = new Phaser.Geom.Line();
 
   private anchorPoint: Phaser.Math.Vector2 | null = null;
+  private minLength = WEB_MIN_LENGTH;
+  private maxLength = WEB_MAX_LENGTH;
   private currentLength = WEB_MAX_LENGTH * 0.75;
   private isAttached = false;
   private tension = 0;
@@ -71,8 +76,8 @@ export class Web {
     this.isAttached = true;
     this.currentLength = Phaser.Math.Clamp(
       Phaser.Math.Distance.Between(point.x, point.y, this.player.x, this.player.y),
-      WEB_MIN_LENGTH,
-      WEB_MAX_LENGTH,
+      this.minLength,
+      this.maxLength,
     );
   }
 
@@ -108,21 +113,27 @@ export class Web {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     const playerPos = new Phaser.Math.Vector2(this.player.x, this.player.y);
     const distance = Phaser.Math.Distance.Between(playerPos.x, playerPos.y, this.anchorPoint.x, this.anchorPoint.y);
+    const dt = Math.max(delta / 1000, 1 / 1200);
 
     if (this.reelInput !== 0) {
       this.currentLength = Phaser.Math.Clamp(
         this.currentLength + this.reelInput * WEB_REEL_SPEED * (delta / 1000),
-        WEB_MIN_LENGTH,
-        WEB_MAX_LENGTH,
+        this.minLength,
+        this.maxLength,
       );
     }
 
     if (distance > this.currentLength) {
       const dir = this.anchorPoint.clone().subtract(playerPos).normalize();
-      const pullStrength = (distance - this.currentLength) * 12;
-      body.velocity.add(dir.scale(pullStrength));
+      const extension = distance - this.currentLength;
+      const acceleration = Phaser.Math.Clamp(extension * WEB_PULL_STRENGTH, -WEB_ACCELERATION_CAP, WEB_ACCELERATION_CAP);
+      const velocityDelta = dir.scale(acceleration * dt);
+      body.velocity.add(velocityDelta);
 
-      this.tension = pullStrength;
+      const dampingFactor = Phaser.Math.Clamp(1 - WEB_DAMPING * dt, 0.1, 1);
+      body.velocity.scale(dampingFactor);
+
+      this.tension = Math.abs(acceleration);
       const tangentialVelocity = this.calculateTangentialVelocity(body.velocity, dir);
 
       if (this.tension > WEB_TENSION_BREAK_FORCE || tangentialVelocity > WEB_TANGENTIAL_SPEED_LIMIT) {
@@ -152,5 +163,11 @@ export class Web {
   private calculateTangentialVelocity(velocity: Phaser.Math.Vector2, direction: Phaser.Math.Vector2): number {
     const tangent = new Phaser.Math.Vector2(-direction.y, direction.x);
     return Math.abs(tangent.dot(velocity));
+  }
+
+  setLengthBounds(min: number, max: number): void {
+    this.minLength = Phaser.Math.Clamp(min, WEB_MIN_LENGTH * 0.5, WEB_MIN_LENGTH * 2);
+    this.maxLength = Phaser.Math.Clamp(max, WEB_MAX_LENGTH, WEB_MAX_LENGTH * 1.8);
+    this.currentLength = Phaser.Math.Clamp(this.currentLength, this.minLength, this.maxLength);
   }
 }

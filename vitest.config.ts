@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      phaser3spectorjs: path.resolve(__dirname, './src/test/stubs/phaser3spectorjs.ts'),
     },
   },
 });

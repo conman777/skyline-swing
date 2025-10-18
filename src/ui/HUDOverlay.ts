@@ -10,6 +10,7 @@ export class HUDOverlay {
 
   private readonly distanceText: Phaser.GameObjects.Text;
   private readonly multiplierText: Phaser.GameObjects.Text;
+  private readonly scoreText: Phaser.GameObjects.Text;
   private readonly speedText: Phaser.GameObjects.Text;
   private readonly speedBar: Phaser.GameObjects.Rectangle;
   private readonly pauseButton: Phaser.GameObjects.Text;
@@ -24,6 +25,7 @@ export class HUDOverlay {
 
     this.distanceText = this.createLabel(24, 24, 'Distance: 0 m');
     this.multiplierText = this.createLabel(24, 56, 'Multiplier: ×1.00');
+    this.scoreText = this.createLabel(24, 88, 'Score: 0');
 
     this.seedLabel = this.createLabel(this.scene.scale.width - 24, 24, 'Seed: ------');
     this.seedLabel.setOrigin(1, 0);
@@ -68,6 +70,7 @@ export class HUDOverlay {
     this.container.add([
       this.distanceText,
       this.multiplierText,
+      this.scoreText,
       this.seedLabel,
       this.pauseButton,
       this.speedText,
@@ -81,6 +84,10 @@ export class HUDOverlay {
 
   setMultiplier(multiplier: number): void {
     this.multiplierText.setText(`Multiplier: ×${multiplier.toFixed(2)}`);
+  }
+
+  setScore(score: number): void {
+    this.scoreText.setText(`Score: ${score.toFixed(0)}`);
   }
 
   setSpeed(speed: number, ratio: number): void {
