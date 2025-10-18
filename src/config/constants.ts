@@ -70,3 +70,22 @@ export function styleMultiplierForChain(chain: number, nearMisses: number): numb
   const nearMissBonus = Math.min(nearMisses, 10) * 0.08;
   return 1 + chainBonus + nearMissBonus;
 }
+
+// Web tension scales up with difficulty to allow faster swings
+export function webTensionLimitForDifficulty(difficulty: number): number {
+  const normalized = Math.min(Math.max(difficulty - 1, 0), 9);
+  const bonus = normalized * 50; // +50 tension per difficulty level
+  return WEB_TENSION_BREAK_FORCE + bonus;
+}
+
+// Coyote time decreases slightly at higher difficulties (still generous)
+export function coyoteTimeForDifficulty(difficulty: number): number {
+  const penalty = Math.max(difficulty - 4, 0) * 10; // -10ms per level above 4
+  return Math.max(60, PLAYER_COYOTE_TIME - penalty); // Minimum 60ms
+}
+
+// Jump buffer decreases slightly at higher difficulties
+export function jumpBufferForDifficulty(difficulty: number): number {
+  const penalty = Math.max(difficulty - 4, 0) * 8; // -8ms per level above 4
+  return Math.max(50, PLAYER_JUMP_BUFFER - penalty); // Minimum 50ms
+}

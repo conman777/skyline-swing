@@ -29,6 +29,7 @@ export class Web {
   private currentLength = WEB_MAX_LENGTH * 0.75;
   private isAttached = false;
   private tension = 0;
+  private tensionBreakForce = WEB_TENSION_BREAK_FORCE;
 
   private reelInput = 0;
   private guideVisible = false;
@@ -54,6 +55,10 @@ export class Web {
 
   setReelInput(direction: number): void {
     this.reelInput = Phaser.Math.Clamp(direction, -1, 1);
+  }
+
+  setTensionBreakForce(force: number): void {
+    this.tensionBreakForce = Math.max(500, force);
   }
 
   showGuideLine(origin: Phaser.Math.Vector2, target: Phaser.Math.Vector2, color: number): void {
@@ -136,7 +141,7 @@ export class Web {
       this.tension = Math.abs(acceleration);
       const tangentialVelocity = this.calculateTangentialVelocity(body.velocity, dir);
 
-      if (this.tension > WEB_TENSION_BREAK_FORCE || tangentialVelocity > WEB_TANGENTIAL_SPEED_LIMIT) {
+      if (this.tension > this.tensionBreakForce || tangentialVelocity > WEB_TANGENTIAL_SPEED_LIMIT) {
         this.detach('break');
         return;
       }
@@ -153,7 +158,7 @@ export class Web {
     );
 
     this.ropeGraphics.clear();
-    this.ropeGraphics.lineStyle(2, 0x62ffe2, Phaser.Math.Clamp(this.tension / WEB_TENSION_BREAK_FORCE, 0.3, 0.95));
+    this.ropeGraphics.lineStyle(2, 0x62ffe2, Phaser.Math.Clamp(this.tension / this.tensionBreakForce, 0.3, 0.95));
     this.ropeGraphics.beginPath();
     this.ropeGraphics.moveTo(playerPos.x, playerPos.y);
     this.ropeGraphics.lineTo(this.anchorPoint.x, this.anchorPoint.y);

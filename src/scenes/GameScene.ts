@@ -21,6 +21,9 @@ import {
   aimAssistConeForDifficulty,
   difficultyForDistance,
   scrollSpeedCapForDifficulty,
+  webTensionLimitForDifficulty,
+  coyoteTimeForDifficulty,
+  jumpBufferForDifficulty,
 } from '../config/constants';
 import { SettingsStore } from '../systems/SettingsStore';
 import { segmentPool } from '../config/segments';
@@ -394,8 +397,15 @@ export class GameScene extends Phaser.Scene {
   private updateCamera(delta: number): void {
     const deltaDistance = this.scrollSpeed * (delta / 1000);
     this.cameras.main.scrollX += deltaDistance;
+
+    // Check left boundary death
     if (this.player.sprite.x < this.cameras.main.worldView.left + 32) {
       this.handlePlayerKO('Left boundary');
+    }
+
+    // Check fall-below-world death
+    if (this.player.sprite.y > GAME_HEIGHT * 1.5) {
+      this.handlePlayerKO('Fell out of bounds');
     }
   }
 
@@ -404,7 +414,15 @@ export class GameScene extends Phaser.Scene {
     const deltaMeters = deltaDistancePx / PIXELS_PER_METER;
     this.distanceTravelled += deltaMeters;
     this.elapsedTime += delta / 1000;
+
+    const oldDifficulty = this.currentDifficulty;
     this.currentDifficulty = difficultyForDistance(this.distanceTravelled);
+
+    // Update difficulty-scaled parameters when difficulty increases
+    if (this.currentDifficulty !== oldDifficulty) {
+      this.updateDifficultyScaling();
+    }
+
     this.scoreManager.updateDistance(this.distanceTravelled);
     this.hud.setDistance(this.distanceTravelled);
     const speedRatio = Phaser.Math.Clamp(
@@ -414,6 +432,15 @@ export class GameScene extends Phaser.Scene {
       1,
     );
     this.hud.setSpeed(this.scrollSpeed, speedRatio);
+  }
+
+  private updateDifficultyScaling(): void {
+    // Update web tension limit for harder swings at higher difficulty
+    this.web.setTensionBreakForce(webTensionLimitForDifficulty(this.currentDifficulty));
+
+    // Update player jump timing (slightly harder at higher difficulty)
+    this.player.setCoyoteTime(coyoteTimeForDifficulty(this.currentDifficulty));
+    this.player.setJumpBuffer(jumpBufferForDifficulty(this.currentDifficulty));
   }
 
   private updateSegments(): void {
