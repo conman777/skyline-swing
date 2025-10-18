@@ -82,11 +82,14 @@ export class Player {
 
   markGrounded(isGrounded: boolean): void {
     if (isGrounded) {
+      // Landing: record timestamp for coyote time
       if (!this.isGrounded) {
         this.lastGroundedAt = this.sprite.scene.time.now;
       }
       this.isGrounded = true;
-    } else if (!this.sprite.body.blocked.down) {
+    } else {
+      // Leaving ground: always respect the parameter
+      // The collision system is the source of truth
       this.isGrounded = false;
     }
   }
