@@ -3,6 +3,8 @@ import { Player } from '../entities/Player';
 import { Web } from '../entities/Web';
 import { AnchorScanner } from '../entities/AnchorScanner';
 import {
+  AIM_ASSIST_BASE_DEGREES,
+  AIM_ASSIST_BEACON_BONUS,
   CAMERA_SCROLL_ACCEL,
   CAMERA_SCROLL_SPEED_MAX,
   CAMERA_SCROLL_SPEED_START,
@@ -13,14 +15,26 @@ import {
   PLAYER_COYOTE_TIME,
   PLAYER_GRAVITY,
   PLAYER_JUMP_BUFFER,
+  SLOWMO_SCALE,
   WEB_MIN_LENGTH,
+  WEB_MAX_LENGTH,
+  aimAssistConeForDifficulty,
+  difficultyForDistance,
+  scrollSpeedCapForDifficulty,
+  webTensionLimitForDifficulty,
+  coyoteTimeForDifficulty,
+  jumpBufferForDifficulty,
 } from '../config/constants';
 import { SettingsStore } from '../systems/SettingsStore';
 import { segmentPool } from '../config/segments';
-import { SegmentGenerator, GeneratedSegment } from '../systems/SegmentGenerator';
+import { SegmentGenerator, GeneratedSegment, PickupType } from '../systems/SegmentGenerator';
 import { AnchorManager } from '../systems/AnchorManager';
 import { PlatformManager } from '../systems/PlatformManager';
 import { HazardManager } from '../systems/HazardManager';
+import { PickupManager } from '../systems/PickupManager';
+import { CollisionManager } from '../systems/CollisionManager';
+import { Pickup } from '../entities/Pickup';
+import { ScoreManager } from '../systems/ScoreManager';
 import { HUDOverlay } from '../ui/HUDOverlay';
 
 const WEB_COLORS = {
@@ -57,17 +71,26 @@ export class GameScene extends Phaser.Scene {
 
   private distanceTravelled = 0;
   private elapsedTime = 0;
-  private styleMultiplier = 1;
   private seenHazards = new Set<string>();
   private lastTetheredState = false;
   private runEnded = false;
+  private currentDifficulty = 1;
+  private aimAssistBonus = 0;
+  private lastGroundedForScore = false;
+  private pickupsCollected = 0;
+  private closestNearMiss = Number.POSITIVE_INFINITY;
 
   private segmentGenerator!: SegmentGenerator;
   private anchorManager!: AnchorManager;
   private platformManager!: PlatformManager;
   private hazardManager!: HazardManager;
-  private hazardOverlap?: Phaser.Physics.Arcade.Collider;
+  private pickupManager!: PickupManager;
+  private collisionManager!: CollisionManager;
   private activeSegments: GeneratedSegment[] = [];
+  private readonly scoreManager = new ScoreManager();
+  private activeEffects = new Map<PickupType, number>();
+  private pickupDisplay?: { type: PickupType; expiresAt: number; duration: number };
+  private nearMissCooldown = new WeakMap<Phaser.GameObjects.GameObject, number>();
 
   constructor() {
     super('GameScene');
@@ -110,14 +133,25 @@ export class GameScene extends Phaser.Scene {
     this.createWeb();
     this.createWorldManagers();
     this.hud = new HUDOverlay({ scene: this });
-    this.physics.add.collider(this.player.sprite, this.platformManager.collider);
-    this.hazardOverlap = this.physics.add.overlap(
-      this.player.sprite,
-      this.hazardManager.activeHazards,
-      this.handleHazardHit,
-      undefined,
-      this,
-    );
+    this.hud.setPickup('None');
+    this.hud.setPickupProgress(0);
+    this.scoreManager.reset();
+    this.activeEffects.clear();
+    this.pickupDisplay = undefined;
+    this.pickupsCollected = 0;
+    this.closestNearMiss = Number.POSITIVE_INFINITY;
+    this.nearMissCooldown = new WeakMap();
+    this.collisionManager = new CollisionManager({
+      scene: this,
+      player: this.player,
+      web: this.web,
+      platformManager: this.platformManager,
+      hazardManager: this.hazardManager,
+      pickupManager: this.pickupManager,
+      onPlayerHitHazard: (hazardType) => this.handleHazardCollision(hazardType),
+      onPickupCollected: (pickup) => this.handlePickupCollected(pickup),
+    });
+    this.refreshPickupState();
     this.spawnInitialSegments();
     this.hud.setSeed(this.segmentGenerator.seed);
     this.cameras.main.startFollow(
@@ -134,7 +168,7 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-P', () => this.pauseGame());
   }
 
-  update(_time: number, delta: number): void {
+  update(time: number, delta: number): void {
     this.updateScrollSpeed(delta);
     this.updateCamera(delta);
     this.updateDistance(delta);
@@ -142,6 +176,12 @@ export class GameScene extends Phaser.Scene {
     this.web.setReelInput(this.reelInput);
     this.syncPlayerWebState();
     this.updateSegments();
+    this.hazardManager.update(time, delta);
+    this.collisionManager.update();
+    this.updatePickupEffects();
+    this.updateGroundedScoreState();
+    this.checkNearMisses();
+    this.updateHudFromScore();
   }
 
   private createWorldBounds(): void {
@@ -155,7 +195,13 @@ export class GameScene extends Phaser.Scene {
       const target = this.tryAttachWeb();
       if (target) {
         this.web.attachTo(target.point);
+        this.scoreManager.registerSwing(true);
+        if (target.type === 'beacon') {
+          this.scoreManager.registerBeaconUse();
+        }
         this.setupCursorSprite(target.type === 'beacon' ? 'beacon' : 'surface');
+      } else {
+        this.scoreManager.registerSwing(false);
       }
     });
 
@@ -186,12 +232,10 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.on('wheel', (_pointer, _over, _dx, dy) => {
-      this.reelInput = dy < 0 ? -1 : dy > 0 ? 1 : 0;
-      this.reelInputResetTimer?.remove(false);
-      this.reelInputResetTimer = this.time.delayedCall(140, () => {
-        this.reelInput = 0;
-        this.reelInputResetTimer = undefined;
-      });
+      const direction = Math.sign(dy);
+      if (direction === 0) return;
+      this.reelInput = direction;
+      this.scheduleReelReset();
     });
   }
 
@@ -220,12 +264,14 @@ export class GameScene extends Phaser.Scene {
     this.anchorManager = new AnchorManager({ scene: this, debug: false });
     this.platformManager = new PlatformManager({ scene: this });
     this.hazardManager = new HazardManager({ scene: this });
+    this.pickupManager = new PickupManager({ scene: this });
   }
 
   private spawnInitialSegments(): void {
     this.segmentGenerator.reset();
     this.platformManager.clear();
     this.hazardManager.clear();
+    this.pickupManager.clear();
     this.activeSegments = [];
 
     const generatedSegments: GeneratedSegment[] = [];
@@ -248,6 +294,7 @@ export class GameScene extends Phaser.Scene {
     const offsetX = segment.worldX;
     this.platformManager.buildPlatforms(segment.definition.platforms, offsetX);
     this.hazardManager.spawnHazards(segment.definition.hazards, offsetX);
+    this.pickupManager.spawnPickups(segment.definition.pickups, offsetX);
     this.activeSegments.push(segment);
 
     const newHazards = segment.definition.hazards
@@ -270,7 +317,8 @@ export class GameScene extends Phaser.Scene {
       return null;
     }
 
-    const cone = this.settings.value.assists.aimAssistConeDegrees ?? 15;
+    const baseCone = this.settings.value.assists.aimAssistConeDegrees ?? AIM_ASSIST_BASE_DEGREES;
+    const cone = aimAssistConeForDifficulty(baseCone + this.aimAssistBonus, this.currentDifficulty);
     const candidate = this.anchorScanner.findBestAnchor(origin, direction, cone);
     if (candidate && this.lineOfSightClear(origin, candidate.point)) {
       this.guideColor = candidate.type === 'beacon' ? WEB_COLORS.beacon : WEB_COLORS.surface;
@@ -290,7 +338,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const cone = this.settings.value.assists.aimAssistConeDegrees ?? 15;
+    const baseCone = this.settings.value.assists.aimAssistConeDegrees ?? AIM_ASSIST_BASE_DEGREES;
+    const cone = aimAssistConeForDifficulty(baseCone + this.aimAssistBonus, this.currentDifficulty);
     const candidate = this.anchorScanner.findBestAnchor(origin, direction, cone);
     if (candidate) {
       this.guideColor = candidate.type === 'beacon' ? WEB_COLORS.beacon : WEB_COLORS.surface;
@@ -303,8 +352,24 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private lineOfSightClear(_origin: Phaser.Math.Vector2, _target: Phaser.Math.Vector2): boolean {
-    // TODO: integrate with tilemap collision and hazard blockers.
+  private lineOfSightClear(origin: Phaser.Math.Vector2, target: Phaser.Math.Vector2): boolean {
+    const ray = new Phaser.Geom.Line(origin.x, origin.y, target.x, target.y);
+
+    const platformBoxes = this.platformManager.getBoundingBoxes();
+    for (const box of platformBoxes) {
+      if (Phaser.Geom.Intersects.LineToRectangle(ray, box)) {
+        return false;
+      }
+    }
+
+    const hazardBodies = this.hazardManager.getHazardBodies();
+    for (const body of hazardBodies) {
+      const bounds = new Phaser.Geom.Rectangle(body.x, body.y, body.width, body.height);
+      if (Phaser.Geom.Intersects.LineToRectangle(ray, bounds)) {
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -325,15 +390,22 @@ export class GameScene extends Phaser.Scene {
     this.scrollSpeed = Phaser.Math.Clamp(
       this.scrollSpeed + CAMERA_SCROLL_ACCEL * (delta / 1000),
       CAMERA_SCROLL_SPEED_START,
-      CAMERA_SCROLL_SPEED_MAX,
+      Math.max(CAMERA_SCROLL_SPEED_MAX, scrollSpeedCapForDifficulty(this.currentDifficulty)),
     );
   }
 
   private updateCamera(delta: number): void {
     const deltaDistance = this.scrollSpeed * (delta / 1000);
     this.cameras.main.scrollX += deltaDistance;
+
+    // Check left boundary death
     if (this.player.sprite.x < this.cameras.main.worldView.left + 32) {
       this.handlePlayerKO('Left boundary');
+    }
+
+    // Check fall-below-world death
+    if (this.player.sprite.y > GAME_HEIGHT * 1.5) {
+      this.handlePlayerKO('Fell out of bounds');
     }
   }
 
@@ -342,8 +414,17 @@ export class GameScene extends Phaser.Scene {
     const deltaMeters = deltaDistancePx / PIXELS_PER_METER;
     this.distanceTravelled += deltaMeters;
     this.elapsedTime += delta / 1000;
+
+    const oldDifficulty = this.currentDifficulty;
+    this.currentDifficulty = difficultyForDistance(this.distanceTravelled);
+
+    // Update difficulty-scaled parameters when difficulty increases
+    if (this.currentDifficulty !== oldDifficulty) {
+      this.updateDifficultyScaling();
+    }
+
+    this.scoreManager.updateDistance(this.distanceTravelled);
     this.hud.setDistance(this.distanceTravelled);
-    this.hud.setMultiplier(this.styleMultiplier);
     const speedRatio = Phaser.Math.Clamp(
       (this.scrollSpeed - CAMERA_SCROLL_SPEED_START) /
         (CAMERA_SCROLL_SPEED_MAX - CAMERA_SCROLL_SPEED_START),
@@ -353,10 +434,20 @@ export class GameScene extends Phaser.Scene {
     this.hud.setSpeed(this.scrollSpeed, speedRatio);
   }
 
+  private updateDifficultyScaling(): void {
+    // Update web tension limit for harder swings at higher difficulty
+    this.web.setTensionBreakForce(webTensionLimitForDifficulty(this.currentDifficulty));
+
+    // Update player jump timing (slightly harder at higher difficulty)
+    this.player.setCoyoteTime(coyoteTimeForDifficulty(this.currentDifficulty));
+    this.player.setJumpBuffer(jumpBufferForDifficulty(this.currentDifficulty));
+  }
+
   private updateSegments(): void {
     const leftBound = this.cameras.main.worldView.left;
     this.platformManager.prune(leftBound);
     this.hazardManager.prune(leftBound);
+    this.pickupManager.prune(leftBound);
     const prunedAnchors = this.anchorManager.prune(leftBound);
     this.anchorScanner.updateSurfaceAnchors(prunedAnchors.surfacePoints);
     this.anchorScanner.updateBeaconZones(prunedAnchors.beaconZones);
@@ -364,7 +455,7 @@ export class GameScene extends Phaser.Scene {
     const rightEdge = this.cameras.main.worldView.right;
     const upcomingThreshold = this.segmentGenerator.length - rightEdge;
     if (upcomingThreshold < GAME_WIDTH * 2) {
-      const segment = this.spawnNextSegment(Phaser.Math.Clamp(this.activeSegments.length + 1, 1, 5));
+      const segment = this.spawnNextSegment(this.currentDifficulty);
       const anchors = this.anchorManager.appendSegments([segment]);
       this.anchorScanner.updateSurfaceAnchors(anchors.surfacePoints);
       this.anchorScanner.updateBeaconZones(anchors.beaconZones);
@@ -374,14 +465,22 @@ export class GameScene extends Phaser.Scene {
   private handlePlayerKO(reason = 'Left boundary'): void {
     if (this.runEnded) return;
     this.runEnded = true;
+    this.collisionManager.destroy();
+    this.setTimeScale(1);
+    const snapshot = this.scoreManager.getSnapshot();
+    const closestNearMiss = Number.isFinite(this.closestNearMiss) ? this.closestNearMiss : 0;
     this.scene.launch('ResultsScene', {
       distance: this.distanceTravelled,
       duration: this.elapsedTime,
       topSpeed: this.scrollSpeed,
-      longestChain: 0,
-      closestNearMiss: 0,
+      longestChain: snapshot.longestChain,
+      closestNearMiss,
+      score: snapshot.totalScore,
+      nearMisses: snapshot.nearMisses,
+      beaconHits: snapshot.beaconHits,
+      multiplier: snapshot.multiplier,
       hazardsCleared: this.seenHazards.size,
-      pickupsUsed: 0,
+      pickupsUsed: this.pickupsCollected,
       runSeed: this.segmentGenerator.seed,
       reason,
     });
@@ -404,12 +503,132 @@ export class GameScene extends Phaser.Scene {
     this.input.setDefaultCursor(texture);
   }
 
-  private handleHazardHit(
-    _player: Phaser.GameObjects.GameObject,
-    hazard: Phaser.GameObjects.GameObject,
-  ): void {
-    const hazardType = (hazard.getData?.('hazard') as string) ?? 'hazard';
+  private handleHazardCollision(hazardType: string): void {
     this.handlePlayerKO(`Hazard: ${hazardType}`);
+  }
+
+  private handlePickupCollected(pickup: Pickup): void {
+    const now = this.time.now;
+    const expiresAt = now + pickup.durationMs;
+    this.activeEffects.set(pickup.type, expiresAt);
+    this.pickupDisplay = { type: pickup.type, expiresAt, duration: pickup.durationMs };
+    this.hud.setPickup(this.getPickupLabel(pickup.type), pickup.colour);
+    this.hud.setPickupProgress(1);
+    this.pickupsCollected += 1;
+    this.refreshPickupState();
+  }
+
+  private scheduleReelReset(delay = 140): void {
+    if (this.reelInputResetTimer) {
+      this.reelInputResetTimer.remove(false);
+    }
+    this.reelInputResetTimer = this.time.addEvent({
+      delay,
+      callback: () => {
+        this.reelInput = 0;
+        this.reelInputResetTimer = undefined;
+      },
+    });
+  }
+
+  private updatePickupEffects(): void {
+    const now = this.time.now;
+    let refresh = false;
+
+    this.activeEffects.forEach((expiresAt, type) => {
+      if (now >= expiresAt) {
+        this.activeEffects.delete(type);
+        refresh = true;
+      }
+    });
+
+    if (refresh) {
+      this.refreshPickupState();
+    }
+
+    if (this.pickupDisplay) {
+      const remaining = Math.max(this.pickupDisplay.expiresAt - now, 0);
+      const progress = this.pickupDisplay.duration > 0 ? remaining / this.pickupDisplay.duration : 0;
+      this.hud.setPickupProgress(progress);
+      if (remaining <= 0) {
+        this.pickupDisplay = undefined;
+        this.hud.setPickup('None');
+        this.hud.setPickupProgress(0);
+      }
+    }
+  }
+
+  private refreshPickupState(): void {
+    const hasLongerWeb = this.activeEffects.has('longerWeb');
+    const hasSlowMo = this.activeEffects.has('slowMo');
+    const hasDoubleJump = this.activeEffects.has('doubleJump');
+    const hasMagnet = this.activeEffects.has('anchorMagnet');
+
+    const minLength = hasLongerWeb ? WEB_MIN_LENGTH * 0.7 : WEB_MIN_LENGTH;
+    const maxLength = hasLongerWeb ? WEB_MAX_LENGTH * 1.4 : WEB_MAX_LENGTH;
+    this.web.setLengthBounds(minLength, maxLength);
+
+    this.setTimeScale(hasSlowMo ? SLOWMO_SCALE : 1);
+    this.player.enableDoubleJump(hasDoubleJump);
+    this.aimAssistBonus = hasMagnet ? AIM_ASSIST_BEACON_BONUS : 0;
+  }
+
+  private setTimeScale(scale: number): void {
+    this.physics.world.timeScale = scale;
+    this.time.timeScale = scale;
+    this.tweens.timeScale = scale;
+  }
+
+  private updateGroundedScoreState(): void {
+    const grounded = this.player.body.blocked.down;
+    if (grounded && !this.lastGroundedForScore) {
+      this.scoreManager.registerGrounded();
+    }
+    this.lastGroundedForScore = grounded;
+  }
+
+  private checkNearMisses(): void {
+    const now = this.time.now;
+    const playerX = this.player.sprite.x;
+    const playerY = this.player.sprite.y;
+
+    for (const body of this.hazardManager.getHazardBodies()) {
+      const hazardObject = body.gameObject as Phaser.GameObjects.GameObject;
+      if (!hazardObject) continue;
+      const centerX = body.x + body.width / 2;
+      const centerY = body.y + body.height / 2;
+      const distancePx = Phaser.Math.Distance.Between(playerX, playerY, centerX, centerY);
+      if (distancePx > 0 && distancePx < 96) {
+        const cooldownUntil = this.nearMissCooldown.get(hazardObject) ?? 0;
+        if (now >= cooldownUntil) {
+          this.scoreManager.registerNearMiss();
+          this.nearMissCooldown.set(hazardObject, now + 1500);
+          const distanceMeters = distancePx / PIXELS_PER_METER;
+          this.closestNearMiss = Math.min(this.closestNearMiss, distanceMeters);
+        }
+      }
+    }
+  }
+
+  private updateHudFromScore(): void {
+    const snapshot = this.scoreManager.getSnapshot();
+    this.hud.setMultiplier(snapshot.multiplier);
+    this.hud.setScore(snapshot.totalScore);
+  }
+
+  private getPickupLabel(type: PickupType): string {
+    switch (type) {
+      case 'longerWeb':
+        return 'Longer Web';
+      case 'slowMo':
+        return 'Slow Motion';
+      case 'doubleJump':
+        return 'Double Jump';
+      case 'anchorMagnet':
+        return 'Anchor Magnet';
+      default:
+        return 'Pickup';
+    }
   }
 
   private syncPlayerWebState(): void {
